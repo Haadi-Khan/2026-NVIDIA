@@ -1,12 +1,9 @@
 import cudaq
-from cudaq import spin
 import numpy as np
 from scipy.optimize import minimize
 from itertools import combinations, product
-from functools import reduce
 import time
 
-# Optional: keep cupy for fallback/comparison
 try:
     import cupy as cp
     CUPY_AVAILABLE = True
@@ -21,64 +18,6 @@ OPTIMAL_ENERGIES = {
     11: 5, 12: 10, 13: 6, 14: 19, 15: 15, 16: 24, 17: 32,
     18: 25, 19: 29, 20: 26, 21: 26, 22: 39, 23: 47, 24: 36, 25: 36
 }
-
-PAULI_MATS = {
-    'I': np.array([[1, 0], [0, 1]], dtype=np.complex128),
-    'X': np.array([[0, 1], [1, 0]], dtype=np.complex128),
-    'Y': np.array([[0, -1j], [1j, 0]], dtype=np.complex128),
-    'Z': np.array([[1, 0], [0, -1]], dtype=np.complex128)
-}
-
-
-def pauli_string_to_spin_op(pauli_str: str) -> cudaq.SpinOperator:
-    """Convert a Pauli string like 'XZIY' to a cudaq.SpinOperator.
-    
-    Args:
-        pauli_str: String of Pauli operators (I, X, Y, Z) from qubit 0 to n-1
-        
-    Returns:
-        cudaq.SpinOperator representing the tensor product
-    """
-    n_qubits = len(pauli_str)
-    
-    # Start with coefficient 1
-    result = None
-    
-    for i, p in enumerate(pauli_str):
-        if p == 'I':
-            # Identity doesn't contribute to the operator
-            continue
-        elif p == 'X':
-            op = spin.x(i)
-        elif p == 'Y':
-            op = spin.y(i)
-        elif p == 'Z':
-            op = spin.z(i)
-        else:
-            raise ValueError(f"Unknown Pauli operator: {p}")
-        
-        if result is None:
-            result = op
-        else:
-            result = result * op
-    
-    # If all identity, return identity operator
-    if result is None:
-        result = spin.i(0)
-    
-    return result
-
-
-def build_spin_operators(pauli_strings: list) -> list:
-    """Build a list of cudaq.SpinOperator from Pauli strings.
-    
-    Args:
-        pauli_strings: List of Pauli strings
-        
-    Returns:
-        List of cudaq.SpinOperator objects
-    """
-    return [pauli_string_to_spin_op(p) for p in pauli_strings]
 
 
 def labs_energy(s: np.ndarray) -> int:
@@ -100,6 +39,7 @@ def merit_factor(s: np.ndarray) -> float:
 
 
 def build_kbody_paulis(n: int, k: int, N: int) -> list:
+    """Build k-body Pauli strings for n qubits."""
     paulis = []
     indices = list(combinations(range(n), k))
     
@@ -124,83 +64,6 @@ def build_kbody_paulis(n: int, k: int, N: int) -> list:
     return paulis[:N]
 
 
-def pauli_string_to_matrix(pauli_str: str) -> np.ndarray:
-    mats = [PAULI_MATS[p] for p in pauli_str]
-    return reduce(np.kron, mats)
-
-
-class PauliExpectationCalculator:
-    """Legacy expectation calculator using dense matrices and CuPy (slow)."""
-    def __init__(self, pauli_strings: list, use_gpu: bool = True):
-        self.pauli_strings = pauli_strings
-        self.n_paulis = len(pauli_strings)
-        self.n_qubits = len(pauli_strings[0])
-        self.dim = 2 ** self.n_qubits
-        self.use_gpu = use_gpu and GPU_AVAILABLE and CUPY_AVAILABLE
-        
-        pauli_mats = np.stack([pauli_string_to_matrix(p) for p in pauli_strings])
-        
-        if self.use_gpu:
-            self.pauli_mats_gpu = cp.asarray(pauli_mats)
-        else:
-            self.pauli_mats_gpu = pauli_mats
-    
-    def compute_expectations(self, state_vector: np.ndarray) -> np.ndarray:
-        if self.use_gpu:
-            sv = cp.asarray(state_vector)
-            sv_conj = cp.conj(sv)
-            transformed = cp.einsum('pij,j->pi', self.pauli_mats_gpu, sv)
-            expectations = cp.real(cp.einsum('i,pi->p', sv_conj, transformed))
-            return cp.asnumpy(expectations)
-        else:
-            sv = state_vector
-            expectations = np.zeros(self.n_paulis, dtype=np.float64)
-            for i in range(self.n_paulis):
-                transformed = self.pauli_mats_gpu[i] @ sv
-                expectations[i] = np.real(np.vdot(sv, transformed))
-            return expectations
-
-
-class CudaqExpectationCalculator:
-    """Expectation calculator using cudaq.observe() - one circuit per Pauli (slower)."""
-    
-    def __init__(self, pauli_strings: list):
-        """Initialize with Pauli strings and build SpinOperators.
-        
-        Args:
-            pauli_strings: List of Pauli strings (e.g., ['XZII', 'IYZI', ...])
-        """
-        self.pauli_strings = pauli_strings
-        self.n_paulis = len(pauli_strings)
-        self.n_qubits = len(pauli_strings[0]) if pauli_strings else 0
-        
-        # Pre-build SpinOperators for each Pauli string
-        self.spin_operators = build_spin_operators(pauli_strings)
-    
-    def compute_expectations_with_observe(self, kernel, n_qubits: int, 
-                                          params: list, n_layers: int) -> np.ndarray:
-        """Compute all Pauli expectations using cudaq.observe().
-        
-        Note: This runs the circuit once per Pauli, so it's slower for many Paulis.
-        
-        Args:
-            kernel: The CUDA-Q kernel function
-            n_qubits: Number of qubits
-            params: List of circuit parameters
-            n_layers: Number of ansatz layers
-            
-        Returns:
-            numpy array of expectation values
-        """
-        expectations = np.zeros(self.n_paulis, dtype=np.float64)
-        
-        for i, spin_op in enumerate(self.spin_operators):
-            result = cudaq.observe(kernel, spin_op, n_qubits, params, n_layers)
-            expectations[i] = result.expectation()
-        
-        return expectations
-
-
 class SparsePauliExpectationCalculator:
     """Fast expectation calculator using sparse Pauli application on GPU.
     
@@ -211,28 +74,17 @@ class SparsePauliExpectationCalculator:
     """
     
     def __init__(self, pauli_strings: list, use_gpu: bool = True):
-        """Initialize with Pauli strings.
-        
-        Args:
-            pauli_strings: List of Pauli strings (e.g., ['XZII', 'IYZI', ...])
-            use_gpu: If True, use CuPy for GPU acceleration
-        """
         self.pauli_strings = pauli_strings
         self.n_paulis = len(pauli_strings)
         self.n_qubits = len(pauli_strings[0]) if pauli_strings else 0
         self.dim = 2 ** self.n_qubits
         self.use_gpu = use_gpu and CUPY_AVAILABLE
         
-        # Pre-compute Pauli action indices and phases for each Pauli string
-        # For Pauli string P, P|j⟩ = phase[j] * |target[j]⟩
+        # Pre-compute Pauli action indices and phases
         self._precompute_pauli_actions()
     
     def _precompute_pauli_actions(self):
         """Precompute the target indices and phases for each Pauli string."""
-        # For each Pauli string, we need:
-        # - target_indices: where each basis state maps to
-        # - phases: the phase factor for each basis state
-        
         self.target_indices = np.zeros((self.n_paulis, self.dim), dtype=np.int64)
         self.phases = np.zeros((self.n_paulis, self.dim), dtype=np.complex128)
         
@@ -242,82 +94,44 @@ class SparsePauliExpectationCalculator:
                 self.target_indices[p_idx, j] = target
                 self.phases[p_idx, j] = phase
         
-        # Move to GPU if available
         if self.use_gpu:
             self.target_indices_gpu = cp.asarray(self.target_indices)
             self.phases_gpu = cp.asarray(self.phases)
     
     def _apply_pauli_to_basis(self, pauli_str: str, basis_idx: int) -> tuple:
-        """Apply Pauli string to a basis state.
-        
-        For P|j⟩ = phase * |j'⟩, returns (j', phase).
-        
-        Args:
-            pauli_str: Pauli string like 'XZIY'
-            basis_idx: Index of basis state |j⟩
-            
-        Returns:
-            (target_idx, phase): The target basis index and phase
-        """
+        """Apply Pauli string to a basis state: P|j⟩ = phase * |j'⟩."""
         target = basis_idx
         phase = 1.0 + 0.0j
         
         for qubit_idx, pauli in enumerate(pauli_str):
-            # Get the bit value of this qubit in basis_idx
             bit = (basis_idx >> qubit_idx) & 1
             
             if pauli == 'I':
-                # Identity: no change
                 pass
             elif pauli == 'X':
-                # X flips the bit: |0⟩ ↔ |1⟩
                 target ^= (1 << qubit_idx)
             elif pauli == 'Y':
-                # Y = i * |1⟩⟨0| - i * |0⟩⟨1|
-                # Y|0⟩ = i|1⟩, Y|1⟩ = -i|0⟩
                 target ^= (1 << qubit_idx)
-                if bit == 0:
-                    phase *= 1j
-                else:
-                    phase *= -1j
+                phase *= 1j if bit == 0 else -1j
             elif pauli == 'Z':
-                # Z|0⟩ = |0⟩, Z|1⟩ = -|1⟩
                 if bit == 1:
                     phase *= -1
         
         return target, phase
     
     def compute_expectations(self, state_vector: np.ndarray) -> np.ndarray:
-        """Compute all Pauli expectations efficiently.
-        
-        Uses the precomputed sparse Pauli actions to compute:
-        ⟨ψ|P|ψ⟩ = Σ_j ψ_j* × phase[j] × ψ_{target[j]}
-        
-        Args:
-            state_vector: The quantum state vector
-            
-        Returns:
-            Array of expectation values
-        """
+        """Compute all Pauli expectations: ⟨ψ|P|ψ⟩ = Σ_j ψ_j* × phase[j] × ψ_{target[j]}"""
         if self.use_gpu:
             sv = cp.asarray(state_vector)
             sv_conj = cp.conj(sv)
-            
-            # Gather transformed amplitudes for all Paulis at once
-            # transformed[p, j] = phase[p, j] * sv[target[p, j]]
             transformed = self.phases_gpu * sv[self.target_indices_gpu]
-            
-            # Compute expectations: sum over j of sv_conj[j] * transformed[p, j]
             expectations = cp.real(cp.sum(sv_conj * transformed, axis=1))
-            
             return cp.asnumpy(expectations)
         else:
             sv = state_vector
             sv_conj = np.conj(sv)
-            
             transformed = self.phases * sv[self.target_indices]
             expectations = np.real(np.sum(sv_conj * transformed, axis=1))
-            
             return expectations
 
 
@@ -348,8 +162,7 @@ def get_n_params(n_qubits: int, n_layers: int) -> int:
 
 class PCESolver:
     def __init__(self, N: int, n_qubits: int = 10, n_layers: int = 10, 
-                 k: int = 2, alpha: float = 0.0, beta: float = 15.0,
-                 use_optimized: bool = True):
+                 k: int = 2, alpha: float = 0.0, beta: float = 15.0):
         """Initialize the PCE Solver.
         
         Args:
@@ -359,8 +172,6 @@ class PCESolver:
             k: k-body Pauli operators
             alpha: Scaling factor for tanh
             beta: Regularization strength
-            use_optimized: If True, use sparse Pauli application (fast). 
-                          If False, use legacy dense matrix method (slow).
         """
         self.N = N
         self.n_qubits = n_qubits
@@ -369,15 +180,9 @@ class PCESolver:
         self.alpha = alpha if alpha > 0 else 1.5 * n_qubits
         self.beta = beta
         self.n_params = get_n_params(n_qubits, n_layers)
-        self.use_optimized = use_optimized
         
         self.pauli_strings = build_kbody_paulis(n_qubits, k, N)
-        
-        # Use sparse calculator for optimized path (single circuit + sparse ops)
-        if use_optimized:
-            self.expectation_calc = SparsePauliExpectationCalculator(self.pauli_strings)
-        else:
-            self.expectation_calc = PauliExpectationCalculator(self.pauli_strings)
+        self.expectation_calc = SparsePauliExpectationCalculator(self.pauli_strings)
         
         self.best_params = None
         self.best_loss = float('inf')
@@ -393,29 +198,13 @@ class PCESolver:
         state = cudaq.get_state(ansatz, self.n_qubits, list(params), self.n_layers)
         return np.array(state, dtype=np.complex128)
     
-    def compute_expectations(self, params: np.ndarray) -> np.ndarray:
-        """Compute Pauli expectations using the appropriate method.
-        
-        Args:
-            params: Circuit parameters
-            
-        Returns:
-            Array of expectation values
-        """
-        # Both methods now use get_state + expectation calculation
-        # The difference is sparse vs dense Pauli application
-        state = self.get_state(params)
-        return self.expectation_calc.compute_expectations(state)
-    
     def objective(self, params: np.ndarray) -> float:
         self.call_count += 1
         
-        # Get state vector (same for both methods)
         t0 = time.perf_counter()
         state = self.get_state(params)
         self.time_get_state += time.perf_counter() - t0
         
-        # Compute expectations (sparse vs dense)
         t0 = time.perf_counter()
         expectations = self.expectation_calc.compute_expectations(state)
         self.time_expectations += time.perf_counter() - t0
@@ -433,7 +222,8 @@ class PCESolver:
     
     def extract_sequence(self, params: np.ndarray) -> tuple:
         """Extract binary sequence from optimized parameters."""
-        expectations = self.compute_expectations(params)
+        state = self.get_state(params)
+        expectations = self.expectation_calc.compute_expectations(state)
         
         sequence = np.sign(expectations).astype(np.int8)
         sequence[sequence == 0] = 1
@@ -442,8 +232,7 @@ class PCESolver:
     
     def print_timing(self):
         total = self.time_get_state + self.time_expectations + self.time_loss
-        mode = "SPARSE" if self.use_optimized else "DENSE"
-        print(f"Timing breakdown ({self.call_count} calls) [{mode}]:")
+        print(f"Timing breakdown ({self.call_count} calls):")
         print(f"  get_state:    {self.time_get_state:.2f}s ({100*self.time_get_state/total:.1f}%)")
         print(f"  expectations: {self.time_expectations:.2f}s ({100*self.time_expectations/total:.1f}%)")
         print(f"  loss:         {self.time_loss:.2f}s ({100*self.time_loss/total:.1f}%)")
