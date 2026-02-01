@@ -1,1 +1,5 @@
 tutorial_notebook/auxiliary_files/__pycache__/
+__pycache__/
+.python-version
+*.csv
+.cursor

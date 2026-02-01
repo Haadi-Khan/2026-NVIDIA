@@ -1,0 +1,100 @@
+import cudaq
+import cupy as cp
+from tqdm import tqdm
+
+GPU_AVAILABLE = True
+cudaq.set_target("nvidia")
+
+# Known optimal LABS energies and metric factors from https://arxiv.org/pdf/1512.02475
+# and some brute force results from our classical investigation.
+ENERGY_DATA = {
+    2: {"metric_factor": 2.0, "energy": 1.0},
+    3: {"metric_factor": 4.5, "energy": 1.0},
+    4: {"metric_factor": 4.0, "energy": 2.0},
+    5: {"metric_factor": 6.25, "energy": 2.0},
+    6: {"metric_factor": 2.571, "energy": 7.001},
+    7: {"metric_factor": 8.167, "energy": 3.0},
+    8: {"metric_factor": 4.0, "energy": 8.0},
+    9: {"metric_factor": 3.375, "energy": 12.0},
+    10: {"metric_factor": 3.846, "energy": 13.001},
+    11: {"metric_factor": 12.1, "energy": 5.0},
+    12: {"metric_factor": 7.2, "energy": 10.0},
+    13: {"metric_factor": 14.083, "energy": 6.0},
+    14: {"metric_factor": 5.158, "energy": 19.0},
+    15: {"metric_factor": 7.5, "energy": 15.0},
+    16: {"metric_factor": 5.333, "energy": 24.002},
+    17: {"metric_factor": 4.516, "energy": 31.997},
+    18: {"metric_factor": 6.48, "energy": 25.0},
+    19: {"metric_factor": 6.224, "energy": 29.001},
+    20: {"metric_factor": 7.692, "energy": 26.001},
+    21: {"metric_factor": 8.481, "energy": 25.999},
+    22: {"metric_factor": 6.205, "energy": 39.001},
+    23: {"metric_factor": 5.628, "energy": 46.997},
+    24: {"metric_factor": 8.0, "energy": 36.0},
+    25: {"metric_factor": 8.681, "energy": 35.998},
+    26: {"metric_factor": 7.511, "energy": 45.001},
+    27: {"metric_factor": 9.851, "energy": 37.001},
+    28: {"metric_factor": 7.84, "energy": 50.0},
+    29: {"metric_factor": 6.782, "energy": 62.002},
+    30: {"metric_factor": 7.627, "energy": 59.001},
+    31: {"metric_factor": 7.172, "energy": 66.997},
+    32: {"metric_factor": 8.0, "energy": 64.0},
+    33: {"metric_factor": 8.508, "energy": 63.999},
+    34: {"metric_factor": 8.892, "energy": 65.002},
+    35: {"metric_factor": 8.39, "energy": 73.004},
+    36: {"metric_factor": 7.902, "energy": 82.005},
+    37: {"metric_factor": 7.959, "energy": 86.003},
+    38: {"metric_factor": 8.299, "energy": 86.998},
+    39: {"metric_factor": 7.682, "energy": 98.998},
+    40: {"metric_factor": 7.407, "energy": 108.006},
+    41: {"metric_factor": 7.782, "energy": 108.006},
+    42: {"metric_factor": 8.733, "energy": 100.996},
+    43: {"metric_factor": 8.482, "energy": 108.996},
+    44: {"metric_factor": 7.934, "energy": 122.007},
+    45: {"metric_factor": 8.581, "energy": 117.993},
+    46: {"metric_factor": 8.076, "energy": 131.005},
+    47: {"metric_factor": 8.181, "energy": 135.008},
+    48: {"metric_factor": 8.229, "energy": 139.993},
+    49: {"metric_factor": 8.827, "energy": 136.003},
+    50: {"metric_factor": 8.17, "energy": 152.999},
+    51: {"metric_factor": 8.5, "energy": 153.0},
+    52: {"metric_factor": 8.145, "energy": 165.991},
+    53: {"metric_factor": 8.262, "energy": 169.995},
+    54: {"metric_factor": 8.331, "energy": 175.009},
+    55: {"metric_factor": 8.845, "energy": 171.001},
+    56: {"metric_factor": 8.167, "energy": 191.992},
+    57: {"metric_factor": 8.641, "energy": 187.999},
+    58: {"metric_factor": 8.538, "energy": 197.002},
+    59: {"metric_factor": 8.49, "energy": 205.006},
+    60: {"metric_factor": 8.257, "energy": 217.997},
+    61: {"metric_factor": 8.232, "energy": 226.008},
+    62: {"metric_factor": 8.179, "energy": 234.992},
+    63: {"metric_factor": 9.587, "energy": 206.999},
+    64: {"metric_factor": 9.846, "energy": 208.003},
+    65: {"metric_factor": 8.802, "energy": 240.002},
+    66: {"metric_factor": 8.475, "energy": 256.991},
+    67: {"metric_factor": 9.313, "energy": 241.007},
+    68: {"metric_factor": 9.248, "energy": 250.0},
+    69: {"metric_factor": 8.688, "energy": 273.999},
+    70: {"metric_factor": 8.305, "energy": 295.003},
+    71: {"metric_factor": 9.165, "energy": 275.014},
+    72: {"metric_factor": 8.64, "energy": 300.0},
+    73: {"metric_factor": 8.651, "energy": 307.999},
+    74: {"metric_factor": 8.029, "energy": 341.014},
+    75: {"metric_factor": 8.549, "energy": 328.986},
+    76: {"metric_factor": 8.647, "energy": 333.989},
+    77: {"metric_factor": 8.281, "energy": 357.988},
+    78: {"metric_factor": 8.767, "energy": 346.983},
+    79: {"metric_factor": 9.205, "energy": 339.001},
+    80: {"metric_factor": 9.091, "energy": 351.996},
+    81: {"metric_factor": 8.819, "energy": 371.981},
+    82: {"metric_factor": 8.918, "energy": 376.99},
+}
+
+def get_optimal_energy(n: int) -> float | None:
+    data = ENERGY_DATA.get(n)
+    return data["energy"] if data else None
+
+def get_metric_factor(n: int) -> float | None:
+    data = ENERGY_DATA.get(n)
+    return data["metric_factor"] if data else None
