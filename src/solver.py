@@ -423,7 +423,9 @@ class PCESolver:
             # SPSA gradient (only 2 evals!)
             grad = self.compute_gradient_spsa(params, c=c)
 
-            if grad_prev is None or (restart_threshold > 0 and t % restart_threshold == 0):
+            if grad_prev is None or (
+                restart_threshold > 0 and t % restart_threshold == 0
+            ):
                 # First iteration or restart: steepest descent
                 direction = -grad
                 beta = 0.0
@@ -521,8 +523,17 @@ class PCESolver:
             if phi > phi_0 + c1 * alpha * dphi_0 or (i > 0 and phi >= phi_prev):
                 # Need to zoom between alpha_prev and alpha
                 return self._wolfe_zoom(
-                    params, direction, phi_0, dphi_0,
-                    alpha_prev, alpha, phi_prev, phi, c, c1, c2
+                    params,
+                    direction,
+                    phi_0,
+                    dphi_0,
+                    alpha_prev,
+                    alpha,
+                    phi_prev,
+                    phi,
+                    c,
+                    c1,
+                    c2,
                 )
 
             # Compute gradient at new point
@@ -536,8 +547,17 @@ class PCESolver:
             # Check if we've gone too far
             if dphi >= 0:
                 return self._wolfe_zoom(
-                    params, direction, phi_0, dphi_0,
-                    alpha, alpha_prev, phi, phi_prev, c, c1, c2
+                    params,
+                    direction,
+                    phi_0,
+                    dphi_0,
+                    alpha,
+                    alpha_prev,
+                    phi,
+                    phi_prev,
+                    c,
+                    c1,
+                    c2,
                 )
 
             # Increase step size
@@ -756,9 +776,7 @@ class PCESolver:
     # Phase 2: Quantum Natural Gradient Methods
     # =====================================================================
 
-    def compute_state_fidelity(
-        self, params1: np.ndarray, params2: np.ndarray
-    ) -> float:
+    def compute_state_fidelity(self, params1: np.ndarray, params2: np.ndarray) -> float:
         """Compute fidelity between two parameter configurations.
 
         Fidelity = |⟨ψ(params1)|ψ(params2)⟩|²
