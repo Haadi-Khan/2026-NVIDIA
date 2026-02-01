@@ -2,7 +2,8 @@ import cudaq
 import numpy as np
 import time
 
-cudaq.set_target('nvidia')
+cudaq.set_target("nvidia")
+
 
 @cudaq.kernel
 def simple_ansatz(n_qubits: int, params: list[float], n_layers: int):
@@ -16,6 +17,7 @@ def simple_ansatz(n_qubits: int, params: list[float], n_layers: int):
             idx += 1
         for q in range(0, n_qubits - 1, 2):
             x.ctrl(qubits[q], qubits[q + 1])
+
 
 n_qubits = 10
 n_layers = 5
@@ -34,4 +36,4 @@ t0 = time.perf_counter()
 for _ in range(n_calls):
     state = cudaq.get_state(simple_ansatz, n_qubits, params, n_layers)
 elapsed = time.perf_counter() - t0
-print(f"get_state: {1000*elapsed/n_calls:.2f}ms per call ({n_calls} calls)")
+print(f"get_state: {1000 * elapsed / n_calls:.2f}ms per call ({n_calls} calls)")

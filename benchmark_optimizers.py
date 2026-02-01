@@ -75,7 +75,7 @@ def benchmark_optimizer(
         if verbose:
             status = "✓" if success else "✗"
             print(
-                f"  Trial {trial+1}: E={energy} (opt={optimal}) {status}, "
+                f"  Trial {trial + 1}: E={energy} (opt={optimal}) {status}, "
                 f"time={elapsed:.2f}s, calls={solver.call_count}"
             )
 
@@ -98,12 +98,16 @@ def print_summary(all_results: list, methods: list, test_N: list):
     for N in test_N:
         print(f"{N:>4} | ", end="")
         for method in methods:
-            method_results = [r for r in all_results if r["N"] == N and r["method"] == method]
+            method_results = [
+                r for r in all_results if r["N"] == N and r["method"] == method
+            ]
             if method_results:
                 avg_time = np.mean([r["time"] for r in method_results])
                 avg_calls = np.mean([r["calls"] for r in method_results])
                 success_rate = np.mean([r["success"] for r in method_results])
-                print(f"{avg_time:6.1f}s {success_rate:4.0%} {avg_calls:6.0f} |", end="")
+                print(
+                    f"{avg_time:6.1f}s {success_rate:4.0%} {avg_calls:6.0f} |", end=""
+                )
             else:
                 print(f"{'---':>18} |", end="")
         print()
@@ -160,7 +164,8 @@ def main():
         help="Number of ansatz layers",
     )
     parser.add_argument(
-        "-v", "--verbose",
+        "-v",
+        "--verbose",
         action="store_true",
         help="Verbose output",
     )
@@ -181,7 +186,7 @@ def main():
     all_results = []
 
     for N in args.N:
-        print(f"\n{'='*60}")
+        print(f"\n{'=' * 60}")
         print(f"N = {N} (optimal energy = {get_optimal_energy(N) or '?'})")
         print("=" * 60)
 
@@ -219,14 +224,18 @@ def main():
     print("=" * 80)
 
     for N in args.N:
-        cobyla_results = [r for r in all_results if r["N"] == N and r["method"] == "COBYLA"]
+        cobyla_results = [
+            r for r in all_results if r["N"] == N and r["method"] == "COBYLA"
+        ]
         if not cobyla_results:
             continue
         cobyla_time = np.mean([r["time"] for r in cobyla_results])
 
         print(f"\nN = {N}:")
         for method in args.methods:
-            method_results = [r for r in all_results if r["N"] == N and r["method"] == method]
+            method_results = [
+                r for r in all_results if r["N"] == N and r["method"] == method
+            ]
             if method_results:
                 method_time = np.mean([r["time"] for r in method_results])
                 speedup = cobyla_time / method_time if method_time > 0 else 0

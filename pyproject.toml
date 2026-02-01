@@ -10,8 +10,15 @@ dependencies = [
     "matplotlib>=3.10.8",
     "numpy>=2.4.2",
     "pandas>=3.0.0",
+    "pytest>=9.0.2",
+    "pytest-xdist>=3.5.0",
     "pyzmq>=27.1.0",
     "ruff>=0.14.14",
     "scikit-learn>=1.8.0",
     "tqdm>=4.67.2",
 ]
+
+[tool.pytest.ini_options]
+addopts = "-n 9"
+testpaths = ["."]
+python_files = ["test.py"]
