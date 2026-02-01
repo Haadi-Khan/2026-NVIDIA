@@ -91,13 +91,11 @@ def _(np, pd, plt):
                         label=cfg['label'],
                         zorder=3)
 
-    # Horizontal reference line
-    ax.axhline(y=6, color='#dc2626', linestyle='--', linewidth=1.5, 
-               alpha=0.7, label='MF = 6 threshold', zorder=1)
-
+    ax.axvline(x=27, color='#7c3aed', linestyle='--', linewidth=1.5,
+               alpha=0.7, label='Reference Paper Lower Limit', zorder=1)
     # Vertical reference line at N = 37
     ax.axvline(x=37, color='#7c3aed', linestyle='--', linewidth=1.5,
-               alpha=0.7, label='Reference Paper Limit', zorder=1)
+               alpha=0.7, label='Reference Paper Upper Limit', zorder=1)
 
     # Styling
     ax.set_xlabel("N", fontsize=13, fontweight='medium')
@@ -112,7 +110,7 @@ def _(np, pd, plt):
     ax.set_xlim(0, max(x_vals) + 2)
 
     # Text box in bottom right corner
-    textstr = "Loss function limits:\n  MTS: 250k\n  PCE: 25k"
+    textstr = "Loss function calls:\n  MTS: 250k\n  PCE: 25k"
     props = dict(boxstyle='round,pad=0.4', facecolor='white', 
                  edgecolor='gray', alpha=0.9)
     ax.text(0.98, 0.05, textstr, transform=ax.transAxes, fontsize=9,
