@@ -13,7 +13,7 @@ import time
 
 from src import (
     PCESolver,
-    OPTIMAL_ENERGIES,
+    get_optimal_energy,
     merit_factor,
     GPU_AVAILABLE,
 )
@@ -93,7 +93,7 @@ def run_single(
     elapsed = time.time() - start
     
     # Print results
-    optimal = OPTIMAL_ENERGIES.get(N)
+    optimal = get_optimal_energy(N)
     
     print()
     solver.print_timing()
